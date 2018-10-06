@@ -32,7 +32,7 @@ class StatusBar(Widget):
         self.power_icon = load_image('resources/icons/power.png', theme)
         
     def draw(self, image):
-        context = image.draw(image)
+        context = image.draw()
         
         context.rectangle(self.xy, fill=self.theme.COLOR_BACKGROUND)
         
@@ -65,17 +65,21 @@ class Graph(Widget):
         lower_lim = min(series)
         if isnan(lower_lim):
             lower_lim = 'n/a'
+        else:
+            lower_lim = '{:03.1f}'.format(lower_lim)
             
         upper_lim = max(series)
         if isnan(upper_lim):
             upper_lim = 'n/a'
+        else:
+            upper_lim = '{:03.1f}'.format(upper_lim)
         self.legends[side] = (lower_lim, upper_lim, color)
         
     def set_yaxis(self, data):
         self.yaxis = data 
     
     def draw(self, image):
-        context = image.draw(image)
+        context = image.draw()
         # Draw a background for the graph
         context.rectangle(self.xy, fill=self.theme.COLOR_BACKGROUND)
         
@@ -162,22 +166,22 @@ class Graph(Widget):
         
         # draw the legend texts
         # left lower bound
-        llb = '{:03.1f}'.format(self.legends['left'][0])
+        llb = self.legends['left'][0]
         llb_size = context.textsize(llb, font=legend_font)
         draw_rotated_text(image, llb, (self.xy[0] + legend_width_bottom - (llb_size[1] / 2), self.xy[1] + legend_width_lr - legend_tick_length - llb_size[0]), angle=-90, font=legend_font, fill=self.legends['left'][2])
 
         # left upper bound
-        lub = '{:03.1f}'.format(self.legends['left'][1])
+        lub = self.legends['left'][1]
         lub_size = context.textsize(lub, font=legend_font)
         draw_rotated_text(image, lub, (self.xy[0] + self.width - legend_width_top - (lub_size[1] / 2), self.xy[1] + legend_width_lr - legend_tick_length - lub_size[0]), angle=-90, font=legend_font, fill=self.legends['left'][2])
 
         # right lower bound
-        rlb = '{:03.1f}'.format(self.legends['right'][0])
+        rlb = self.legends['right'][0]
         rlb_size = context.textsize(rlb, font=legend_font)
         draw_rotated_text(image, rlb, (self.xy[0] + legend_width_bottom - (rlb_size[1] / 2), self.xy[1] + self.height - legend_width_lr + legend_tick_length + 5), angle=-90, font=legend_font, fill=self.legends['right'][2])
 
         # right upper bound
-        rub = '{:03.1f}'.format(self.legends['right'][1])
+        rub = self.legends['right'][1]
         rub_size = context.textsize(rub, font=legend_font)
         draw_rotated_text(image, rub, (self.xy[0] + self.width - legend_width_top - (rub_size[1] / 2), self.xy[1] + self.height - legend_width_lr + legend_tick_length + 5), angle=-90, font=legend_font, fill=self.legends['right'][2])
         
@@ -207,7 +211,7 @@ class ProgressWidget(Widget):
         self.target_temperature = temperature
         
     def draw(self, image):
-        context = image.draw(image)
+        context = image.draw()
         self.graph.theme = self.theme
         
         context.rectangle(self.xy, fill=self.theme.COLOR_BACKGROUND)
@@ -281,7 +285,7 @@ class MenuWidget(Widget):
                 self.scroll_offset -= 1
         
     def draw(self, image):
-        context = image.draw(image)
+        context = image.draw()
         
         context.rectangle(self.xy, fill=self.theme.COLOR_BACKGROUND)
         margin_x = 8
@@ -325,7 +329,7 @@ class StartWidget(Widget):
         self.start_icon = load_image('resources/icons/start_small.png', theme)
                 
     def draw(self, image):
-        context = image.draw(image)
+        context = image.draw()
         
         context.rectangle(self.xy, fill=self.theme.COLOR_BACKGROUND)
         
@@ -372,7 +376,7 @@ class Dialog(Widget):
         self.selected_button = 'left' if self.selected_button == 'right' else 'right'
         
     def draw(self, image):
-        context = image.draw(image)
+        context = image.draw()
         
         context.rectangle(self.xy, fill=self.theme.COLOR_BACKGROUND, outline=self.theme.COLOR_PRIMARY)
         

@@ -6,6 +6,13 @@ ENC_BTN = 3
 # DHT Pins
 DHT22 = 4
 
+# Beeper Pins
+BEEPER = 2
+
+# Relay Pins
+RELAY_1 = 22
+RELAY_2 = 23
+
 # LCD Pins
 TFT_DC = 24
 TFT_RST = 25

@@ -1,5 +1,5 @@
-from . import mocks, screens, themes, pins
-import queue
+from . import screens, themes, pins, hal
+from .mocks import Relay as MockRelay, Beeper as MockBeeper, DHT22SampleVals as MockDHT22
 
 import matplotlib
 matplotlib.use("TkAgg")
@@ -15,72 +15,127 @@ import queue
 import math
 import datetime
 import threading
+import time
+import queue
+import atexit
 
 import RPi.GPIO as GPIO
 
 import Adafruit_ILI9341 as TFT
 import Adafruit_GPIO.SPI as SPI
-
-from PyEcoder.PyEcoder import Encoder
+import Adafruit_DHT
 
 class App:
     def __init__(self):
         self.process_running = False
         self.theme = themes.LightTheme()
-        self.target_humidity = 1.5
+        self.target_humidity = 4
         self.max_temperature = 75
-        self.max_runtime = datetime.timedelta(hours = 5)
+        self.max_runtime = datetime.timedelta(hours = 6)
         self.set_eta = None
         self.intermeasurement_delay = 1
+
+        self.channel = queue.Queue()
+
+    def invalidate_display(self):
+        self.channel.put('invalid')
 
 class RealApp(App):
     def __init__(self):
         super().__init__()
 
-        backlight = GPIO.PWM(pins.TFT_BL, 1000)
-        backlight.start(50)
+        GPIO.setmode(GPIO.BCM)
+
+        self.backlight = hal.Relay(pins.TFT_BL)
+        self.backlight.on()
 
         self.display = TFT.ILI9341(pins.TFT_DC, rst=pins.TFT_RST, spi=SPI.SpiDev(pins.TFT_SPI_PORT, pins.TFT_SPI_DEVICE, max_speed_hz=64000000))
         TFT_SIZE = (240, 320)
-
-        self.encoder = Encoder(pins.ENC_CLK, pins.ENC_DAT, pins.ENC_BTN)
-        self.encoder.on_click(self.current_screen.on_click)
-        self.encoder.on_turn(lambda dir: self.current_screen.on_cwturn() if dir else self.current_screen.on_ccwturn())
+        self.display.begin()
 
         self.current_screen = screens.StartScreen(self.display, TFT_SIZE, app=self)
 
-    def run(self):
-        self.display.begin()
-        threading.Timer(0.033, self.display_loop)
+        self.encoder = hal.Encoder(pins.ENC_CLK, pins.ENC_DAT, pins.ENC_BTN)
+                
+        # The Unit has two relays to switch without potential no matter the plug orientation
+        self.relay1 = hal.Relay(pins.RELAY_1)
+        self.relay2 = hal.Relay(pins.RELAY_2)
+        # Make sure heater is initially off
+        self.switch_heater(False)
 
-    def invalidate_display(self):
-        self.channel.put('invalid')
+        self.beeper = hal.Beeper(pins.BEEPER)
+
+        def cleanup():
+            self.switch_heater(False)
+            self.beeper.off()
+            self.backlight.off()
+            self.display.clear()
+            GPIO.cleanup()
+        atexit.register(cleanup)
+
+        def click():
+            self.beeper.short_beep()
+            self.current_screen.on_click()
+
+        def turn(dir):
+            self.beeper.short_beep()
+            if dir:
+                self.current_screen.on_ccwturn()  
+            else:
+                 self.current_screen.on_cwturn()
+
+        self.encoder.on_click(click)
+        self.encoder.on_turn(turn)
+        self.encoder.on_long_click(lambda: self.toggle_theme())
+
+        self.read_sensors = partial(Adafruit_DHT.read_retry, Adafruit_DHT.DHT22, pins.DHT22)
+        self.heater_on = partial(self.switch_heater, True)
+        self.heater_off = partial(self.switch_heater, False)
+        self.notify_user = self.beeper.long_beep
+        self.intermeasurement_delay = 0.1
+
+        self.current_screen.draw()
+
+    def toggle_theme(self):
+        self.theme = themes.DarkTheme() if type(self.theme) == themes.LightTheme else themes.LightTheme()
+        self.current_screen.draw()
+
+    def switch_heater(self, state):
+        if state:
+            self.relay1.on()
+            self.relay2.on()
+        else:
+            self.relay1.off()
+            self.relay2.off()
+
+    def run(self):
+        threading.Timer(0.033, self.display_loop).start()
+        while True:
+            time.sleep(1)
 
     def display_loop(self):
         try:
-            self.channel.get(block=False)
+            self.channel.get(block=True)
             self.display.display()
         except queue.Empty:
             pass
-        threading.Timer(0.033, self.display_loop)
+        threading.Timer(0.033, self.display_loop).start()
 
 class MockApp(App):
     def __init__(self):
         super().__init__()
 
-        relay = mocks.Relay(1)
-        beeper = mocks.Beeper(1)
+        relay = MockRelay(1)
+        beeper = MockBeeper(1)
 
-        self.read_sensors = partial(mocks.DHT22SampleVals().read_retry, 0, 0)
+        self.read_sensors = partial(MockDHT22().read_retry, 0, 0)
         self.heater_on = relay.on
         self.heater_off = relay.off
         self.notify_user = beeper.long_beep
         self.intermeasurement_delay = 0.01
 
-        self.channel = queue.Queue()
-
-        #self.display = Image.new('RGBA', (240, 320), (0, 0, 0))
-        #TFT_SIZE = self.display.size
+        self.display = Image.new('RGBA', (240, 320), (0, 0, 0))
+        TFT_SIZE = self.display.size
 
         self.root = Tk.Tk()
         self.root.wm_title("Smart Dry Mock")
@@ -118,13 +173,9 @@ class MockApp(App):
         self.root.after(33, self.display_loop)
         self.root.mainloop()
 
-    def invalidate_display(self):
-        self.channel.put('invalid')
-
     def display_loop(self):
         try:
             self.channel.get(block=False)
-            print('display')
             self.root.image = np.rot90(np.asarray(self.display))
             self.im.set_data(self.root.image)
             self.canvas.draw()

@@ -97,6 +97,7 @@ class MainMenuScreen(Screen):
         if self.editing_item == -1:
             if self.widget.selected_item == 4:
                 self.switch_screen(ProgressScreen)
+                return
             else:
                 self.editing_item = self.widget.selected_item
                 self.widget.edit_mode = True
@@ -174,6 +175,10 @@ class ProgressScreen(Screen):
 
         # minimum number of sensor samples to collect before calculating an ETA
         self.minimum_eta_samples = 100
+
+        # sometimes the first few readings from the DHT are too low, 
+        # take a minimun number of samples before ending the process
+        self.minimum_humid_samples = 10
         
         self.start()
         
@@ -192,16 +197,17 @@ class ProgressScreen(Screen):
                 self.stop('Process canceled')
         else:
             # process was finished, restart the app
-            #TODO: reset the app
             self.switch_screen(StartScreen)
 
     def on_cwturn(self):
         if self.dialog is not None:
             self.dialog.select_next()
+            self.draw()
 
     def on_ccwturn(self):
         if self.dialog is not None:
             self.dialog.select_next()
+            self.draw()
             
     def start(self):
         self.app.process_running = True
@@ -243,13 +249,11 @@ class ProgressScreen(Screen):
         if temp > self.app.max_temperature:
             self.stop('Overtemperature!')
 
-        if humid <= self.app.target_humidity:
+        if len(self.humidities) > self.minimum_humid_samples and humid <= self.app.target_humidity:
             self.stop('Process Finished')
 
-        max_runtime = self.app.set_eta
-        if max_runtime is not None:
-            if max_runtime > (self.timestamps[-1] - self.timestamps[0]):
-                self.stop('Process Timeout')
+        if self.app.max_runtime <= (self.timestamps[-1] - self.timestamps[0]):
+            self.stop('Process Timeout')
 
 
     def get_eta(self):

@@ -36,6 +36,6 @@ class Beeper:
     def __init__(self, pin):
         pass
 
-    def long_beep():
+    def long_beep(self):
         print('Beep')
         print('\a')
