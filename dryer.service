@@ -1,0 +1,11 @@
+[Unit]
+Description=Dryer Controller
+
+[Service]
+ExecStart=/home/pi/Dryer/run.py
+WorkingDirectory=/home/pi/Dryer
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+Alias=dryer.service
