@@ -9,6 +9,7 @@ GPIO.setmode(GPIO.BCM)
 class Encoder:
 
     LONG_CLICK_TIME = datetime.timedelta(seconds=2)
+    MINIMUM_CLICK_TIME = datetime.timedelta(microseconds=100)
 
     def __init__(self, clk, dt, btn=None, steps=2, debug=False):
         self.clk = clk
@@ -67,12 +68,14 @@ class Encoder:
             self.button_clicked_at = datetime.datetime.now()
         else:
             button_released_at = datetime.datetime.now()
-            if self.button_clicked_at is not None and (button_released_at - self.button_clicked_at) > Encoder.LONG_CLICK_TIME:
-                if self._long_click_callback is not None:
-                    self._long_click_callback()
-            else:
-                if self._click_callback is not None:
-                    self._click_callback()
+            if self.button_clicked_at is not None:
+                downtime = button_released_at - self.button_clicked_at 
+                if downtime > Encoder.LONG_CLICK_TIME:
+                    if self._long_click_callback is not None:
+                        self._long_click_callback()
+                elif downtime > Encoder.MINIMUM_CLICK_TIME:
+                    if self._click_callback is not None:
+                        self._click_callback()
 
     def on_turn(self, callback):
         self._turn_callback = callback
