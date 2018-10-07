@@ -40,6 +40,12 @@ class App:
     def invalidate_display(self):
         self.channel.put('invalid')
 
+    def wait_for_display(self):
+        #while not self.channel.empty():
+        #    time.sleep(0.01)
+        pass
+
+
 class RealApp(App):
     def __init__(self):
         super().__init__()

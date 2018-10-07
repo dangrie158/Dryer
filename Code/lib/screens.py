@@ -40,6 +40,7 @@ class Screen:
             self.dialog.draw(self.display)
             
         self.app.invalidate_display()
+        self.app.wait_for_display()
             
     def on_cwturn(self):
         pass
@@ -121,15 +122,20 @@ class MainMenuScreen(Screen):
         elif self.editing_item == 2:
             # max runtime selected, increase by 15 min
             if self.app.max_runtime < datetime.timedelta(hours=23, minutes=45):
+                if self.app.set_eta is not None:
+                    eta_offset = (self.app.set_eta - datetime.datetime.now()) - self.app.max_runtime
+                    self.app.set_eta = datetime.datetime.now() + (self.app.max_runtime + datetime.timedelta(minutes=15)) + eta_offset
+
                 self.app.max_runtime += datetime.timedelta(minutes=15)
         elif self.editing_item == 3:
             # eta selected
             if self.app.set_eta is None:
-                # if eta was none, set to a time object
-                self.app.set_eta = datetime.time(hour=6, minute=0)
+                # if eta was none, set to a datetime object 15min in the future
+                self.app.set_eta = datetime.datetime.now() + self.app.max_runtime + datetime.timedelta(minutes=15)
             else:
-                new_eta = datetime.datetime.combine(datetime.date.today(), self.app.set_eta) + datetime.timedelta(minutes=15)
-                self.app.set_eta = new_eta.time()
+                # limit the start offset to the next 24h
+                if self.app.set_eta + datetime.timedelta(minutes=15) < datetime.datetime.now() + datetime.timedelta(days=1):
+                    self.app.set_eta += datetime.timedelta(minutes=15)
             
         self.display_limits()
         self.draw()
@@ -148,16 +154,19 @@ class MainMenuScreen(Screen):
         elif self.editing_item == 2:
             # max runtime selected, decrease by 15 min
             if self.app.max_runtime > datetime.timedelta(minutes=15):
+                if self.app.set_eta is not None:
+                    eta_offset = (self.app.set_eta - datetime.datetime.now()) - self.app.max_runtime
+                    self.app.set_eta = datetime.datetime.now() + (self.app.max_runtime - datetime.timedelta(minutes=15)) + eta_offset
+
                 self.app.max_runtime -= datetime.timedelta(minutes=15)
         elif self.editing_item == 3:
             # eta selected
-            if self.app.set_eta == datetime.time(hour=6, minute=0):
+            if self.app.set_eta is not None and (self.app.set_eta - self.app.max_runtime - datetime.timedelta(minutes=15)) < datetime.datetime.now():
                 # eta was at minimum, set to None
                 self.app.set_eta = None
             elif self.app.set_eta is not None:
                 # decrease set eta by 15 minutes
-                new_eta = datetime.datetime.combine(datetime.date.today(), self.app.set_eta) - datetime.timedelta(minutes=15)
-                self.app.set_eta = new_eta.time()
+                self.app.set_eta -= datetime.timedelta(minutes=15)
             
         self.display_limits()
         self.draw()
@@ -167,6 +176,8 @@ class ProgressScreen(Screen):
         super().__init__(*args, **kwargs, main_widget=widgets.ProgressWidget)
         
         self.app.process_running = False
+        self.is_waiting = False
+        self.process_finished = False
         self.widget.set_graphdata([datetime.datetime.now()], [nan], [nan])
         self.widget.set_targets(humidity=self.app.target_humidity, temperature=self.app.max_temperature)
         self.temperatures = []
@@ -180,9 +191,39 @@ class ProgressScreen(Screen):
         # take a minimun number of samples before ending the process
         self.minimum_humid_samples = 10
         
-        self.start()
+        if self.app.set_eta is None:
+            # start the process immediately
+            self.start()
+        else:
+            # display a dialog how long the process will wait before starting
+            self.create_dialog('Waiting...', 'Cancel', 'Start')
+            self.draw()
+            self.is_waiting = True
+
+        Thread(target=self.screen_updater).start()
         
     def on_click(self):
+        if self.is_waiting:
+            if self.dialog.selected_button == 'left':
+                self.is_waiting = False
+                self.stop('Process canceled')
+            else:
+                self.is_waiting = False
+                self.dialog = None
+                self.start()
+                self.draw()
+
+        if self.process_finished: 
+            # process was finished, restart the app
+            self.switch_screen(StartScreen)
+            return
+
+        if not self.is_waiting and not self.app.process_running:
+            # process stopped, but dont restart the app yet, just hide the dialog
+            self.process_finished = True
+            self.dialog = None
+            self.draw()
+
         if self.dialog is None and self.app.process_running:
             # display a cancel dialog if the progress is running
             self.create_dialog('Cancel process?', 'No', 'Yes')
@@ -195,9 +236,6 @@ class ProgressScreen(Screen):
                 self.draw()
             else:
                 self.stop('Process canceled')
-        else:
-            # process was finished, restart the app
-            self.switch_screen(StartScreen)
 
     def on_cwturn(self):
         if self.dialog is not None:
@@ -211,25 +249,44 @@ class ProgressScreen(Screen):
             
     def start(self):
         self.app.process_running = True
+        self.is_waiting = False
         self.app.heater_on()
         self.status_bar.status['power'] = True
-        self.reader_thread = Thread(target=self.sensor_reader)
-        self.reader_thread.start()
+        Thread(target=self.sensor_reader).start()
 
     def stop(self, reason):
         self.app.process_running = False
+        self.is_waiting = False
         self.app.heater_off()
         self.status_bar.status['power'] = False
         self.create_dialog(reason, 'OK')
         self.draw()
         self.app.notify_user()
 
+    def screen_updater(self):
+        while self.app.process_running or self.is_waiting:
+            time.sleep(1)
+            if len(self.timestamps) > 0:
+                self.timestamps[-1] = datetime.datetime.now()
+                self.widget.set_graphdata(self.timestamps, self.humidities, self.temperatures)
+
+            if self.is_waiting:
+                time_left = (self.app.set_eta.replace(microsecond=0) - datetime.datetime.now().replace(microsecond=0)) - self.app.max_runtime
+                self.dialog.title = "Waiting {}...".format(time_left)
+
+                if time_left <= datetime.timedelta(seconds = 0):
+                    self.dialog = None
+                    self.is_waiting = False
+                    self.app.notify_user()
+                    self.start()
+            
+            self.draw()
+
     def sensor_reader(self):
         while self.app.process_running:
             self.make_sensor_reading()
             self.widget.set_graphdata(self.timestamps, self.humidities, self.temperatures)
             time.sleep(self.app.intermeasurement_delay)
-            self.draw()
 
             if len(self.timestamps) > self.minimum_eta_samples:
                 eta = self.get_eta()
