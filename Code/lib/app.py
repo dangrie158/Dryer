@@ -52,8 +52,12 @@ class RealApp(App):
 
         GPIO.setmode(GPIO.BCM)
 
-        self.backlight = hal.Relay(pins.TFT_BL)
+        self.backlight = hal.IO(pins.TFT_BL)
         self.backlight.on()
+
+        # Override the Bootled blinker to signify a completed boot
+        self.bootled = hal.IO(pins.BOOT_LED)
+        self.bootled.on()
 
         self.display = TFT.ILI9341(pins.TFT_DC, rst=pins.TFT_RST, spi=SPI.SpiDev(pins.TFT_SPI_PORT, pins.TFT_SPI_DEVICE, max_speed_hz=64000000))
         TFT_SIZE = (240, 320)
@@ -64,8 +68,8 @@ class RealApp(App):
         self.encoder = hal.Encoder(pins.ENC_CLK, pins.ENC_DAT, pins.ENC_BTN)
                 
         # The Unit has two relays to switch without potential no matter the plug orientation
-        self.relay1 = hal.Relay(pins.RELAY_1)
-        self.relay2 = hal.Relay(pins.RELAY_2)
+        self.relay1 = hal.IO(pins.RELAY_1)
+        self.relay2 = hal.IO(pins.RELAY_2)
         # Make sure heater is initially off
         self.switch_heater(False)
 
@@ -74,6 +78,7 @@ class RealApp(App):
         def cleanup():
             self.switch_heater(False)
             self.beeper.off()
+            self.bootled.off()
             self.backlight.off()
             self.display.clear()
             GPIO.cleanup()

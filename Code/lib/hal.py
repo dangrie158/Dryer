@@ -97,7 +97,7 @@ class DHT22SampleVals:
         self.sample += 1 
         return h, t
 
-class Relay:
+class IO:
     def __init__(self, pin):
         self.pin = pin
         GPIO.setup(pin, GPIO.OUT)
@@ -108,7 +108,7 @@ class Relay:
     def off(self):
         GPIO.output(self.pin, GPIO.LOW)
 
-class Beeper(Relay):
+class Beeper(IO):
 
     LONG_BEEP_DURATIUON = 1.0
     SHORT_BEEP_DURATIUON = 0.1

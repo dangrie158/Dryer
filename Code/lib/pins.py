@@ -1,13 +1,14 @@
 # Encoder Pins
 ENC_CLK = 14
 ENC_DAT = 15
-ENC_BTN = 3
+ENC_BTN = 17
 
 # DHT Pins
-DHT22 = 4
+DHT22 = 2
 
-# Beeper Pins
-BEEPER = 2
+# Div Pins
+BEEPER = 4
+BOOT_LED = 27
 
 # Relay Pins
 RELAY_1 = 22
